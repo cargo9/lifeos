@@ -9,7 +9,6 @@ const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 })
 
 const clean = (v) => (typeof v === 'number' && v >= 0 ? v : null)
 
-// охранник на входе: без токена не пускаем (кроме /health)
 app.addHook('onRequest', async (req, reply) => {
   if (req.url === '/health') return
   const auth = req.headers.authorization ?? ''
