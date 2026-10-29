@@ -1,9 +1,10 @@
+import os from 'node:os'
 import Fastify from 'fastify'
 import pg from 'pg'
 import fs from 'node:fs'
 
 const TOKEN = fs.readFileSync(new URL('./.token', import.meta.url), 'utf8').trim()
-const db = new pg.Pool({ host: '127.0.0.1', database: 'lifeos', user: process.env.USER })
+const db = new pg.Pool({ host: '127.0.0.1', database: 'lifeos', user: os.userInfo().username })
 const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 })
 
 const clean = (v) => (typeof v === 'number' && v >= 0 ? v : null)
