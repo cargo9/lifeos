@@ -41,4 +41,19 @@ app.post('/overland', async (req) => {
   return { result: 'ok' }
 })
 
+app.get('/day', async (req, reply) => {
+  const date = req.query.date
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) {
+    return reply.code(400).send({ error: 'нужен date=YYYY-MM-DD' })
+  }
+  const { rows } = await db.query(
+    `SELECT ts, lat, lon, speed FROM locations
+     WHERE ts >= $1::date::timestamp AT TIME ZONE 'Europe/Berlin'
+       AND ts <  ($1::date + 1)::timestamp AT TIME ZONE 'Europe/Berlin'
+     ORDER BY ts`,
+    [date]
+  )
+  return { date, points: rows }
+})
+
 await app.listen({ host: '0.0.0.0', port: 3000 })
