@@ -56,11 +56,99 @@ app.get('/day', async (req, reply) => {
   return { date, points: rows }
 })
 
-// дни, в которые есть хоть одна точка (сутки по Europe/Berlin) — для навигации по датам
+// ── Apple Health и прочие «интервальные» данные ──
+// Быстрая команда шлёт строки «start;end;value» (так проще собрать в Shortcuts),
+// можно и JSON-массив: { type, samples: [{ start, end, value }] }
+const TYPE_RE = /^[a-z][a-z0-9_]{0,31}$/
+
+function parseSamples(body) {
+  if (Array.isArray(body?.samples)) return body.samples
+  if (typeof body?.lines === 'string') {
+    return body.lines
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const [start, end, value] = l.split(';').map((x) => x.trim())
+        return { start, end, value }
+      })
+  }
+  return null
+}
+
+// число в местном формате айфона: «1 234,5» / «1,234.5» / «1.234,5» / «1234 шагов» → 1234.5
+function num(v) {
+  if (typeof v === 'number') return v
+  let x = String(v ?? '').replace(/[^\d.,-]/g, '')
+  if (x.includes('.') && x.includes(',')) {
+    // разделитель тысяч — тот, что встречается раньше
+    x = x.indexOf(',') < x.indexOf('.') ? x.replaceAll(',', '') : x.replaceAll('.', '').replace(',', '.')
+  } else if (/^-?\d{1,3}(,\d{3})+$/.test(x)) x = x.replaceAll(',', '') // «1,234» = тысяча
+  else x = x.replace(',', '.')
+  return x === '' ? NaN : Number(x)
+}
+
+app.post('/samples', async (req, reply) => {
+  const type = req.body?.type
+  if (!TYPE_RE.test(type ?? '')) return reply.code(400).send({ error: 'нужен type, например "steps"' })
+  const list = parseSamples(req.body)
+  if (!list) return reply.code(400).send({ error: 'нужны samples[] или lines' })
+
+  // один и тот же интервал дважды в пачке уронил бы INSERT … ON CONFLICT — оставляем последний
+  const uniq = new Map()
+  let skipped = 0
+  for (const x of list) {
+    const a = new Date(x.start)
+    const b = new Date(x.end ?? x.start)
+    const v = num(x.value)
+    if (isNaN(a) || isNaN(b) || b < a || !Number.isFinite(v)) {
+      skipped++
+      continue
+    }
+    uniq.set(`${a.toISOString()}|${b.toISOString()}`, v)
+  }
+  if (uniq.size === 0) return { saved: 0, skipped }
+  const st = [], en = [], val = []
+  for (const [k, v] of uniq) {
+    const [a, b] = k.split('|')
+    st.push(a); en.push(b); val.push(v)
+  }
+  const r = await db.query(
+    `INSERT INTO samples (type, start_ts, end_ts, value)
+     SELECT $1, * FROM unnest($2::timestamptz[], $3::timestamptz[], $4::float8[])
+     ON CONFLICT (type, start_ts, end_ts) DO UPDATE SET value = EXCLUDED.value, received = now()`,
+    [type, st, en, val]
+  )
+  req.log.info(`samples ${type}: saved ${r.rowCount}, skipped ${skipped}`)
+  return { saved: r.rowCount, skipped }
+})
+
+// интервалы, задевающие выбранные сутки (Europe/Berlin), сгруппированные по type
+app.get('/samples', async (req, reply) => {
+  const date = req.query.date
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) {
+    return reply.code(400).send({ error: 'нужен date=YYYY-MM-DD' })
+  }
+  const { rows } = await db.query(
+    `SELECT type, start_ts AS start, end_ts AS "end", value FROM samples
+     WHERE end_ts   >  $1::date::timestamp AT TIME ZONE 'Europe/Berlin'
+       AND start_ts <  ($1::date + 1)::timestamp AT TIME ZONE 'Europe/Berlin'
+     ORDER BY type, start_ts`,
+    [date]
+  )
+  const byType = {}
+  for (const { type, ...s } of rows) (byType[type] ??= []).push(s)
+  return { date, samples: byType }
+})
+
+// дни, где есть хоть что-то: GPS-точки или интервалы (сутки по Europe/Berlin) — для навигации по датам
 app.get('/days', async () => {
   const { rows } = await db.query(
-    `SELECT to_char(ts AT TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD') AS date, count(*)::int AS points
-     FROM locations GROUP BY 1 ORDER BY 1`
+    `SELECT date, sum(points)::int AS points, sum(samples)::int AS samples FROM (
+       SELECT to_char(ts AT TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD') AS date, 1 AS points, 0 AS samples FROM locations
+       UNION ALL
+       SELECT to_char(start_ts AT TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD'), 0, 1 FROM samples
+     ) x GROUP BY date ORDER BY date`
   )
   return { days: rows }
 })
