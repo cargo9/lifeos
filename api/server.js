@@ -68,21 +68,18 @@ app.get('/day', async (req, reply) => {
 // можно и JSON-массив: { type, samples: [{ start, end, value }] }
 const TYPE_RE = /^[a-z][a-z0-9_]{0,31}$/
 
+// запись = «дата;дата;число». Ищем записи регуляркой, а не по переносам строк: если в Быстрой
+// команде разделитель не «Новая строка», записи приходят склеенными («…;612 2026-11-04T…»),
+// но каждая всё равно начинается с даты — границы видно и так.
+const DATE = String.raw`\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?(?:Z|[+-]\d{2}:?\d{2})?`
+const RECORD = new RegExp(String.raw`(${DATE})\s*;\s*(${DATE})\s*;\s*(.*?)(?=\s*${DATE}\s*;|[\r\n]|$)`, 'g')
+
 function parseSamples(body) {
   if (Array.isArray(body?.samples)) return body.samples
-  // lines: один текст со строками или список строк (если в Быстрой команде вставить список)
+  // lines: один текст или список строк (если в Быстрой команде вставить список)
   const lines = Array.isArray(body?.lines) ? body.lines.join('\n') : body?.lines
-  if (typeof lines === 'string') {
-    return lines
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => {
-        const [start, end, value] = l.split(';').map((x) => x.trim())
-        return { start, end, value }
-      })
-  }
-  return null
+  if (typeof lines !== 'string') return null
+  return [...lines.matchAll(RECORD)].map(([, start, end, value]) => ({ start, end, value }))
 }
 
 // число в местном формате айфона: «1 234,5» / «1,234.5» / «1.234,5» / «1234 шагов» → 1234.5
@@ -125,7 +122,10 @@ app.post('/samples', async (req, reply) => {
   if (skipped > 0) {
     req.log.warn(`samples ${type}: пришло ${list.length}, отбраковано ${skipped}; пример: ${JSON.stringify(firstBad).slice(0, 300)}`)
   }
-  if (list.length === 0) req.log.warn(`samples ${type}: пришло 0 строк, поля тела: ${Object.keys(req.body).join(', ')}`)
+  if (list.length === 0) {
+    const raw = Array.isArray(req.body.lines) ? req.body.lines.join(' | ') : String(req.body.lines ?? '')
+    req.log.warn(`samples ${type}: не нашёл ни одной записи; начало текста: ${raw.slice(0, 200)}`)
+  }
   if (uniq.size === 0) return { saved: 0, skipped }
   const st = [], en = [], val = []
   for (const [k, v] of uniq) {
