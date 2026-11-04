@@ -42,6 +42,7 @@ export function useReplay(day) {
       if (st.kind === 'before') next = st.at // до первой точки смотреть нечего
       else if (st.kind === 'gap') next = st.to // дыру в данных перепрыгиваем
       else next = s + dt * speed * (st.kind === 'stop' ? STOP_FAST : 1)
+      if (!(next > s)) next = s + dt * speed // подстраховка: время обязано идти вперёд
       if (next >= last) {
         seek(last)
         setPlaying(false)

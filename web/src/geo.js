@@ -209,7 +209,9 @@ export function stateAt(day, sec) {
   const b = route[i + 1]
   if (!b) return { kind: 'after', pos: a, at: a.s, index: i }
 
-  const span = spans.find((sp) => sec >= sp.from && sec <= sp.to)
+  // кусок — от начала включительно до конца НЕ включительно: на стыке «дыра → движение»
+  // мы уже в движении (иначе плеер прыгал на конец дыры и стоял на месте)
+  const span = spans.find((sp) => sec >= sp.from && sec < sp.to)
   if (span?.type === 'stop') return { kind: 'stop', pos: a, stop: stops[span.stop], index: i }
   if (span?.type === 'gap') return { kind: 'gap', pos: a, from: span.from, to: span.to, index: i }
 
