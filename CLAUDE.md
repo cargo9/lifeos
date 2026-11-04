@@ -37,11 +37,14 @@ lifeos/
 │       ├── App.jsx      карта (react-leaflet), Play, навигация по дням
 │       ├── Timeline.jsx ползунок + дорожка (движение / стоянка / нет данных)
 │       └── geo.js       вся математика: чистка, стоянки, дыры, позиция на момент
+├── api/restart.sh  перезапуск API (на Самсунге)
+├── deploy.sh       выкладка с ноута: git pull на Самсунге + restart + проверка /health
 └── backup.sh       ночной pg_dump (cron в 3:00), хранит 14 дней в ~/backups
 ```
 
 ## Самсунг (сервер)
-- Доступ: `ssh samsung` (алиас в ~/.ssh/config → `u0_a22@100.119.158.113`, порт 8022)
+- Доступ: `ssh samsung` (алиас в ~/.ssh/config → `u0_a22@100.119.158.113`, порт 8022), вход по ключу `~/.ssh/id_ed25519_samsung`
+  (отдельный ключ для Claude Code; отозвать — удалить строку `claude-code@…` из `~/.ssh/authorized_keys` на Самсунге)
 - Tailscale IP: `100.119.158.113`, API на порту `3000` (HTTP)
 - База: PostgreSQL, БД `lifeos`, данные в `$PREFIX/var/lib/postgresql`
 - Таблица:
@@ -67,14 +70,14 @@ lifeos/
 pgrep -f "node server.js"                       # жив ли сервер
 pg_ctl -D $PREFIX/var/lib/postgresql status     # жива ли база
 tail -f ~/lifeos/api/server.log                 # логи
-# перезапуск сервера после git pull:
-pkill -f "node server.js"; cd ~/lifeos/api && nohup node server.js > server.log 2>&1 &
+sh ~/lifeos/api/restart.sh                      # перезапуск сервера после git pull
 psql lifeos -c "SELECT count(*) FROM locations;"
 ```
 
 ## Процесс разработки
 1. Правлю код на ноуте в `~/lifeos` → `git commit` → `git push`
-2. Если менялся `api/`: `ssh samsung`, `cd ~/lifeos && git pull`, перезапуск сервера
+2. Если менялся `api/`: `./deploy.sh` с ноута (git pull на Самсунге + перезапуск + /health).
+   Не делать `ssh samsung 'pkill -f "node server.js"; …'` одной строкой — pkill убьёт и саму ssh-сессию (в её тексте тоже есть «node server.js»), сервер останется лежать.
 3. Веб: `cd ~/lifeos/web && npm run dev` → http://localhost:5173
 
 ## Известные грабли
