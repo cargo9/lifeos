@@ -132,14 +132,42 @@ app.post('/samples', async (req, reply) => {
     const [a, b] = k.split('|')
     st.push(a); en.push(b); val.push(v)
   }
-  const r = await db.query(
-    `INSERT INTO samples (type, start_ts, end_ts, value)
-     SELECT $1, * FROM unnest($2::timestamptz[], $3::timestamptz[], $4::float8[])
-     ON CONFLICT (type, start_ts, end_ts) DO UPDATE SET value = EXCLUDED.value, received = now()`,
-    [type, st, en, val]
-  )
-  req.log.info(`samples ${type}: saved ${r.rowCount}, skipped ${skipped}`)
-  return { saved: r.rowCount, skipped }
+  // Пачка — СНИМОК своего промежутка: «Здоровье» главное, у нас зеркало. Айфон шлёт тот же час
+  // сначала как 15:04–15:30, потом как 15:04–15:55 — без замены остались бы обе записи
+  // и шаги посчитались бы дважды. Поэтому в одной транзакции: убрать старое в промежутке
+  // [самое раннее начало, самое позднее окончание] пачки → записать новое.
+  // mode: "merge" — только добавить/обновить, ничего не убирая.
+  const snapshot = req.body.mode !== 'merge'
+  const from = st.reduce((a, b) => (a < b ? a : b))
+  const to = en.reduce((a, b) => (a > b ? a : b))
+  const client = await db.connect()
+  let removed = 0
+  let saved = 0
+  try {
+    await client.query('BEGIN')
+    if (snapshot) {
+      const d = await client.query(
+        'DELETE FROM samples WHERE type = $1 AND start_ts >= $2 AND start_ts <= $3',
+        [type, from, to]
+      )
+      removed = d.rowCount
+    }
+    const r = await client.query(
+      `INSERT INTO samples (type, start_ts, end_ts, value)
+       SELECT $1, * FROM unnest($2::timestamptz[], $3::timestamptz[], $4::float8[])
+       ON CONFLICT (type, start_ts, end_ts) DO UPDATE SET value = EXCLUDED.value, received = now()`,
+      [type, st, en, val]
+    )
+    saved = r.rowCount
+    await client.query('COMMIT')
+  } catch (e) {
+    await client.query('ROLLBACK')
+    throw e
+  } finally {
+    client.release()
+  }
+  req.log.info(`samples ${type}: saved ${saved}, replaced ${removed}, skipped ${skipped} (${from} … ${to})`)
+  return { saved, replaced: removed, skipped }
 })
 
 // интервалы, задевающие выбранные сутки (Europe/Berlin), сгруппированные по type
