@@ -70,8 +70,10 @@ const TYPE_RE = /^[a-z][a-z0-9_]{0,31}$/
 
 function parseSamples(body) {
   if (Array.isArray(body?.samples)) return body.samples
-  if (typeof body?.lines === 'string') {
-    return body.lines
+  // lines: один текст со строками или список строк (если в Быстрой команде вставить список)
+  const lines = Array.isArray(body?.lines) ? body.lines.join('\n') : body?.lines
+  if (typeof lines === 'string') {
+    return lines
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean)
@@ -99,21 +101,31 @@ app.post('/samples', async (req, reply) => {
   const type = req.body?.type
   if (!TYPE_RE.test(type ?? '')) return reply.code(400).send({ error: 'нужен type, например "steps"' })
   const list = parseSamples(req.body)
-  if (!list) return reply.code(400).send({ error: 'нужны samples[] или lines' })
+  if (!list) {
+    req.log.warn(`samples: непонятное тело, поля: ${Object.keys(req.body ?? {}).join(', ')}`)
+    return reply.code(400).send({ error: 'нужны samples[] или lines' })
+  }
 
   // один и тот же интервал дважды в пачке уронил бы INSERT … ON CONFLICT — оставляем последний
   const uniq = new Map()
   let skipped = 0
+  let firstBad = null
   for (const x of list) {
     const a = new Date(x.start)
     const b = new Date(x.end ?? x.start)
     const v = num(x.value)
     if (isNaN(a) || isNaN(b) || b < a || !Number.isFinite(v)) {
       skipped++
+      firstBad ??= x
       continue
     }
     uniq.set(`${a.toISOString()}|${b.toISOString()}`, v)
   }
+  // если что-то отбраковали — показываем в логе пример (тут только даты и числа, не секреты)
+  if (skipped > 0) {
+    req.log.warn(`samples ${type}: пришло ${list.length}, отбраковано ${skipped}; пример: ${JSON.stringify(firstBad).slice(0, 300)}`)
+  }
+  if (list.length === 0) req.log.warn(`samples ${type}: пришло 0 строк, поля тела: ${Object.keys(req.body).join(', ')}`)
   if (uniq.size === 0) return { saved: 0, skipped }
   const st = [], en = [], val = []
   for (const [k, v] of uniq) {
