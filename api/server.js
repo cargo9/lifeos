@@ -9,17 +9,16 @@ const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 })
 
 const clean = (v) => (typeof v === 'number' && v >= 0 ? v : null)
 
-// токен: «Authorization: Bearer <токен>» (регистр и лишние пробелы прощаем — их легко занести
-// копированием на айфоне) или ?token=. В лог пишем ПРИЧИНУ отказа, но никогда сам токен.
+// токен: «Authorization: Bearer <токен>», просто «<токен>» или ?token=.
+// Берём последнее слово заголовка — так не важно, как набрано «Bearer» (на айфоне легко
+// попадает кириллица или лишний пробел); сам токен должен совпасть точно.
+// В лог пишем ПРИЧИНУ отказа, но никогда сам токен.
 app.addHook('onRequest', async (req, reply) => {
   if (req.url === '/health') return
   const header = String(req.headers.authorization ?? '').trim()
-  const m = header.match(/^bearer\s+(\S+)\s*$/i)
-  const given = m?.[1] ?? String(req.query?.token ?? '').trim()
+  const given = header ? header.split(/\s+/).pop() : String(req.query?.token ?? '').trim()
   if (given === TOKEN) return
-  const why = !header && !req.query?.token ? 'нет заголовка Authorization'
-    : header && !m ? 'заголовок не вида «Bearer <токен>»'
-    : `токен не совпал (длина ${given.length}, нужно ${TOKEN.length})`
+  const why = !given ? 'нет заголовка Authorization' : `токен не совпал (длина ${given.length}, нужно ${TOKEN.length})`
   req.log.warn(`401: ${why}`)
   return reply.code(401).send({ error: 'unauthorized', why })
 })
