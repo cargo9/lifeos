@@ -80,7 +80,7 @@ export default function MapCard({ day, state, trail, playing, kmNow, onSeek }) {
         <FitBounds day={day} />
         <Follow pos={state.pos} active={playing} />
       </MapContainer>
-      {day && <div className="map-badge">{kmNow}</div>}
+      {kmNow && <div className="map-badge">{kmNow}</div>}
       <a className="map-attrib" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
     </section>
   )

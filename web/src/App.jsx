@@ -50,7 +50,8 @@ export default function App() {
       .then(([d, s]) => {
         const built = buildDay(d.points, date)
         setData({ date, day: built, samples: s.samples, error: null })
-        seek(built.route.length ? built.route[built.route.length - 1].s : built.length)
+        // ползунок — на последнюю точку; если GPS нет — на конец дня (23:59, а не 00:00 следующих суток)
+        seek(built.route.length ? built.route[built.route.length - 1].s : built.length - 60)
       })
       .catch((e) => {
         if (e.name !== 'AbortError') setData({ date, day: null, samples: null, error: e.message })
@@ -142,12 +143,12 @@ export default function App() {
       <Header date={date} onDate={goTo} days={days} server={server} onStep={step} />
 
       <main className="content">
-        <MapCard day={day} state={state} trail={trail} playing={playing} kmNow={ctx ? f.km(ctx.now.d) : ''} onSeek={seek} />
+        <MapCard day={day} state={state} trail={trail} playing={playing} kmNow={ctx?.now ? f.km(ctx.now.d) : ''} onSeek={seek} />
 
         <Player day={day} sec={sec} state={state} status={status} playing={playing}
           onToggle={toggle} onSeek={seek} speed={speed} onSpeed={cycleSpeed} />
 
-        {!loading && !hasPoints && nearest && (
+        {!loading && !hasPoints && Object.keys(sources).length === 0 && nearest && (
           <button className="nearest" onClick={() => goTo(nearest)}>
             {t('status.nearest', { d: f.date(nearest, { weekday: 'short', day: 'numeric', month: 'long' }) })} →
           </button>
