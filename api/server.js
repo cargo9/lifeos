@@ -56,4 +56,13 @@ app.get('/day', async (req, reply) => {
   return { date, points: rows }
 })
 
+// дни, в которые есть хоть одна точка (сутки по Europe/Berlin) — для навигации по датам
+app.get('/days', async () => {
+  const { rows } = await db.query(
+    `SELECT to_char(ts AT TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD') AS date, count(*)::int AS points
+     FROM locations GROUP BY 1 ORDER BY 1`
+  )
+  return { days: rows }
+})
+
 await app.listen({ host: '0.0.0.0', port: 3000 })
