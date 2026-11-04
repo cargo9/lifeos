@@ -1,24 +1,36 @@
+/* токены дизайна Life OS */
 :root {
   --bg: #0e0e0f;
   --card: #1c1c1e;
   --card-2: #141416;
+  --sunk: #121214;
   --line: #2a2a2d;
   --text: #f2f2f2;
+  --text-2: #c8c8c8;
   --muted: #a0a0a0;
+  --faint: #8c8c8c;
   --accent: #a48bff;
-  --stop: #e8b04a;
-  --gap: #6b6b78;
+  --accent-hi: #bca8ff;
+  --amber: #e8b04a;
+  --green: #7fd49b;
+  --blue: #8fb6ff;
+  --on-accent: #141414;
+  --r-card: 22px;
+  --r-tile: 16px;
+  --font: Manrope, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
   color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
-
-html, body, #root { height: 100%; margin: 0; }
-
-body {
-  background: var(--bg);
-  color: var(--text);
-  font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-}
-
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--text); font: 14px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hi); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}

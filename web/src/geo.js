@@ -5,6 +5,11 @@ export const STOP_RADIUS = 60 // м: дальше — уже не «стою н�
 export const STOP_MIN_SEC = 10 * 60 // остановка — от 10 минут
 export const GAP_SEC = 5 * 60 // телефон молчал дольше 5 минут вне стоянки = «нет данных»
 export const MERGE_SEC = 3 * 60 // соседние стоянки в одном месте с паузой < 3 мин склеиваем
+export const MIN_TRIP = 150 // м: движение короче — не «поездка», в инвентарь не попадает
+
+// как двигался — по средней скорости куска (км/ч)
+export const modeOf = (kmh) => (kmh < 8 ? 'walk' : kmh < 25 ? 'bike' : 'transport')
+
 const MIN_STEP = 10 // м: расстояние копим, только когда ушли от прошлой засчитанной точки на 10+ м (иначе дрожание GPS = лишние км)
 const SPEED_WINDOW = 30 // скорость считаем по окну ±30 с — GPS «дрожит» и между соседними точками врёт
 
@@ -152,7 +157,14 @@ export function buildDay(rawPoints, date) {
     }
   }
 
-  return { route, seg, segDist, cum, stops, spans, lines: lines.filter((l) => l.length > 1), gaps, length, clock: makeClock(start) }
+  const day = { route, seg, segDist, cum, stops, spans, lines: lines.filter((l) => l.length > 1), gaps, length, clock: makeClock(start) }
+  // у кусков движения — расстояние и способ (пешком / велик / транспорт)
+  for (const sp of spans) {
+    if (sp.type !== 'move') continue
+    sp.d = statsAt(day, sp.to).d - statsAt(day, sp.from).d
+    sp.mode = modeOf(sp.to > sp.from ? (sp.d / (sp.to - sp.from)) * 3.6 : 0)
+  }
+  return day
 }
 
 // итоги к моменту sec: внутри отрезка добавляем его долю (ползунок свободный — числа текут плавно)
@@ -204,7 +216,7 @@ export function stateAt(day, sec) {
   // движение: плавно ведём точку между двумя соседними замерами
   const k = b.s > a.s ? (sec - a.s) / (b.s - a.s) : 0
   const pos = { lat: a.lat + (b.lat - a.lat) * k, lon: a.lon + (b.lon - a.lon) * k }
-  return { kind: 'move', pos, speed: speedAround(route, day.seg, i), index: i }
+  return { kind: 'move', pos, speed: speedAround(route, day.seg, i), index: i, span }
 }
 
 // средняя скорость (км/ч) по точкам в окне ±SPEED_WINDOW секунд, не выходя за стоянки и дыры
@@ -236,9 +248,3 @@ export function trailAt(day, sec, state) {
 // форматирование: настоящее время на часах (учитывает перевод часов), а не «секунды / 3600»
 export const makeClock = (start) => (sec) =>
   new Date(start.getTime() + sec * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-
-export const duration = (sec) => {
-  const m = Math.round(sec / 60)
-  return m >= 60 ? `${Math.floor(m / 60)}ч ${m % 60}м` : `${m}м`
-}
-export const km = (m) => (m < 1000 ? `${Math.round(m)} м` : `${(m / 1000).toFixed(m < 10000 ? 2 : 1).replace('.', ',')} км`)
