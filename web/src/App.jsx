@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
-import { buildDay, stateAt, trailAt, duration } from './geo.js'
+import { buildDay, stateAt, trailAt, statsAt, duration } from './geo.js'
+import Stats from './Stats.jsx'
 import Timeline from './Timeline.jsx'
 
 const SPEEDS = [
@@ -265,6 +266,8 @@ export default function App() {
           <span><i className="gap" /> нет данных</span>
           <span className="keys">пробел — play · ←/→ — минута · Shift — 10 минут</span>
         </div>
+
+        {day && first != null && <Stats now={statsAt(day, sec)} total={statsAt(day, last)} />}
 
         {day?.stops.length > 0 && (
           <div className="stops">

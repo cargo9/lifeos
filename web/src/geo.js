@@ -5,6 +5,7 @@ export const STOP_RADIUS = 60 // м: дальше — уже не «стою н�
 export const STOP_MIN_SEC = 10 * 60 // остановка — от 10 минут
 export const GAP_SEC = 5 * 60 // телефон молчал дольше 5 минут вне стоянки = «нет данных»
 export const MERGE_SEC = 3 * 60 // соседние стоянки в одном месте с паузой < 3 мин склеиваем
+const MIN_STEP = 10 // м: расстояние копим, только когда ушли от прошлой засчитанной точки на 10+ м (иначе дрожание GPS = лишние км)
 const SPEED_WINDOW = 30 // скорость считаем по окну ±30 с — GPS «дрожит» и между соседними точками врёт
 
 // расстояние между точками в метрах (формула гаверсинусов)
@@ -104,19 +105,39 @@ export function buildDay(rawPoints, date) {
   const stops = detectStops(pts)
   const route = buildRoute(pts, stops)
 
+  // тип каждого отрезка route[i-1] → route[i]: stop / gap / move (seg[0] не используется)
+  const seg = route.map((b, i) => {
+    const a = route[i - 1]
+    if (!a) return null
+    if (a.stop != null && a.stop === b.stop) return 'stop'
+    return b.s - a.s > GAP_SEC ? 'gap' : 'move'
+  })
+
+  // накопительные итоги к каждой точке: метры и секунды в движении / на месте / без данных
+  const segDist = route.map(() => 0)
+  const cum = [{ d: 0, move: 0, stop: 0, gap: 0 }]
+  let anchor = route[0]
+  for (let i = 1; i < route.length; i++) {
+    if (seg[i] === 'move') {
+      const x = dist(anchor, route[i])
+      if (x >= MIN_STEP) {
+        segDist[i] = x
+        anchor = route[i]
+      }
+    } else anchor = route[i]
+    const c = { ...cum[i - 1] }
+    c.d += segDist[i]
+    c[seg[i]] += route[i].s - route[i - 1].s
+    cum.push(c)
+  }
+
   const spans = []
   const push = (type, from, to, extra) => {
     const last = spans[spans.length - 1]
     if (last && last.type === type && type !== 'stop') last.to = to
     else spans.push({ type, from, to, ...extra })
   }
-  for (let i = 1; i < route.length; i++) {
-    const a = route[i - 1]
-    const b = route[i]
-    if (a.stop != null && a.stop === b.stop) push('stop', a.s, b.s, { stop: a.stop })
-    else if (b.s - a.s > GAP_SEC) push('gap', a.s, b.s)
-    else push('move', a.s, b.s)
-  }
+  for (let i = 1; i < route.length; i++) push(seg[i], route[i - 1].s, route[i].s, seg[i] === 'stop' ? { stop: route[i].stop } : {})
 
   // ломаные для карты: сплошные куски движения и пунктир через дыры
   const lines = [[]]
@@ -125,13 +146,30 @@ export function buildDay(rawPoints, date) {
     const p = route[i]
     const next = route[i + 1]
     lines[lines.length - 1].push([p.lat, p.lon])
-    if (next && next.s - p.s > GAP_SEC && !(p.stop != null && p.stop === next.stop)) {
+    if (seg[i + 1] === 'gap') {
       gaps.push([[p.lat, p.lon], [next.lat, next.lon]])
       lines.push([])
     }
   }
 
-  return { route, stops, spans, lines: lines.filter((l) => l.length > 1), gaps, length, clock: makeClock(start) }
+  return { route, seg, segDist, cum, stops, spans, lines: lines.filter((l) => l.length > 1), gaps, length, clock: makeClock(start) }
+}
+
+// итоги к моменту sec: внутри отрезка добавляем его долю (ползунок свободный — числа текут плавно)
+export function statsAt(day, sec) {
+  const { route, seg, segDist, cum } = day
+  const zero = { d: 0, move: 0, stop: 0, gap: 0 }
+  if (route.length === 0 || sec < route[0].s) return zero
+  const i = indexAt(route, sec)
+  const out = { ...cum[i] }
+  const b = route[i + 1]
+  if (b) {
+    const dt = sec - route[i].s
+    const k = dt / (b.s - route[i].s)
+    out[seg[i + 1]] += dt
+    out.d += segDist[i + 1] * k
+  }
+  return out
 }
 
 // индекс последней точки маршрута с s <= sec (бинарный поиск), -1 если раньше всех
@@ -166,17 +204,16 @@ export function stateAt(day, sec) {
   // движение: плавно ведём точку между двумя соседними замерами
   const k = b.s > a.s ? (sec - a.s) / (b.s - a.s) : 0
   const pos = { lat: a.lat + (b.lat - a.lat) * k, lon: a.lon + (b.lon - a.lon) * k }
-  return { kind: 'move', pos, speed: speedAround(route, i), index: i }
+  return { kind: 'move', pos, speed: speedAround(route, day.seg, i), index: i }
 }
 
 // средняя скорость (км/ч) по точкам в окне ±SPEED_WINDOW секунд, не выходя за стоянки и дыры
-function speedAround(route, i) {
+function speedAround(route, seg, i) {
   const t = route[i].s
   let lo = i
   let hi = i + 1
-  const ok = (a, b) => b.s - a.s <= GAP_SEC && !(a.stop != null && a.stop === b.stop)
-  while (lo > 0 && route[lo - 1].s >= t - SPEED_WINDOW && ok(route[lo - 1], route[lo])) lo--
-  while (hi < route.length - 1 && route[hi + 1].s <= t + SPEED_WINDOW && ok(route[hi], route[hi + 1])) hi++
+  while (lo > 0 && route[lo - 1].s >= t - SPEED_WINDOW && seg[lo] === 'move') lo--
+  while (hi < route.length - 1 && route[hi + 1].s <= t + SPEED_WINDOW && seg[hi + 1] === 'move') hi++
   let meters = 0
   for (let k = lo + 1; k <= hi; k++) meters += dist(route[k - 1], route[k])
   const sec = route[hi].s - route[lo].s
@@ -189,8 +226,7 @@ export function trailAt(day, sec, state) {
   const out = [[]]
   for (let i = 0; i <= state.index; i++) {
     const p = day.route[i]
-    const prev = day.route[i - 1]
-    if (prev && p.s - prev.s > GAP_SEC && !(prev.stop != null && prev.stop === p.stop)) out.push([])
+    if (day.seg[i] === 'gap') out.push([])
     out[out.length - 1].push([p.lat, p.lon])
   }
   if (state.kind === 'move') out[out.length - 1].push([state.pos.lat, state.pos.lon])
@@ -205,3 +241,4 @@ export const duration = (sec) => {
   const m = Math.round(sec / 60)
   return m >= 60 ? `${Math.floor(m / 60)}ч ${m % 60}м` : `${m}м`
 }
+export const km = (m) => (m < 1000 ? `${Math.round(m)} м` : `${(m / 1000).toFixed(m < 10000 ? 2 : 1).replace('.', ',')} км`)

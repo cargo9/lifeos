@@ -84,3 +84,15 @@ h1 { margin: 0; font-size: 24px; }
   .map, .player { margin-left: 12px; margin-right: 12px; }
   .legend .keys { display: none; }
 }
+
+/* статы к моменту ползунка */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 14px; }
+.stat {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 12px;
+  background: var(--card-2); border: 1px solid var(--line); border-radius: 12px;
+}
+.stat .label { font-size: 12px; color: var(--muted); }
+.stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.stat .of { font-size: 11px; color: #8c8c8c; }
+.stat.stop b { color: var(--stop); }
+.stat.gap b { color: var(--gap); }
