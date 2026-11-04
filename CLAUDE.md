@@ -41,6 +41,7 @@ lifeos/
 │       ├── useReplay.js время ползунка + проигрывание
 │       └── components/  Header, MapCard, Player (полоса + ползунок), Tiles, Inventory, NavBar, Icon
 ├── api/restart.sh  перезапуск API (на Самсунге)
+├── docs/shortcut-steps.md  как собрать Быструю команду для шагов на iPhone
 ├── deploy.sh       выкладка с ноута: git pull на Самсунге + restart + проверка /health
 └── backup.sh       ночной pg_dump (cron в 3:00), хранит 14 дней в ~/backups
 ```
@@ -55,6 +56,11 @@ lifeos/
   locations(id BIGSERIAL PK, ts TIMESTAMPTZ NOT NULL UNIQUE, lat FLOAT8, lon FLOAT8, accuracy REAL, speed REAL)
   ```
   (уникальный индекс `locations_ts_uniq` на `ts` — защита от дублей)
+  ```sql
+  samples(type TEXT, start_ts TIMESTAMPTZ, end_ts TIMESTAMPTZ, value FLOAT8, received TIMESTAMPTZ, PK(type, start_ts, end_ts))
+  ```
+  Схема целиком — `api/schema.sql` (только IF NOT EXISTS; `deploy.sh` применяет её сам).
+  Типы: `steps` (Быстрая команда, см. `docs/shortcut-steps.md`); зарезервированы `food_kcal`, `screen_min`.
 - Автозапуск: Termux:Boot → `~/.termux/boot/start.sh` (wake-lock, sshd, postgres, crond, node server.js)
 - Tailscale на Самсунге в режиме Always-on VPN. После перезагрузки телефон нужно один раз разблокировать
   и подождать 1–2 минуты, пока всё поднимется.
@@ -65,7 +71,10 @@ lifeos/
 - `POST /overland` → принимает пачку точек Overland, пишет одним INSERT через `unnest`,
   `ON CONFLICT (ts) DO NOTHING`, отрицательные speed/accuracy → NULL. Отвечает `{result:"ok"}`
 - `GET /day?date=YYYY-MM-DD` → точки за день (сутки по Europe/Berlin): `{date, points:[{ts,lat,lon,speed,accuracy}]}`
-- `GET /days` → дни, где есть точки: `{days:[{date, points}]}`
+- `GET /days` → дни, где есть GPS или samples: `{days:[{date, points, samples}]}`
+- `POST /samples` → интервальные данные (Apple Health): `{type:"steps", lines:"start;end;value\n…"}` или `{type, samples:[{start,end,value}]}`.
+  Ключ `(type, start, end)`: повторная отправка обновляет значение. Числа в местном формате айфона понимает.
+- `GET /samples?date=YYYY-MM-DD` → `{date, samples:{steps:[{start,end,value}], …}}` — интервалы, задевающие сутки
 - В пуле pg имя пользователя берётся через `os.userInfo().username` (при автозапуске нет `$USER`)
 
 ### Полезные команды на Самсунге
@@ -104,7 +113,7 @@ psql lifeos -c "SELECT count(*) FROM locations;"
    цвет маршрута по скорости (пешком / велик / транспорт)
 2. Календарь-heatmap: в какие дни есть данные
 3. Еда: фото → сжатие → AI оценивает калории → на таймлайн
-4. Apple Health через iOS Shortcuts (шаги, сон, тренировки)
+4. Apple Health через iOS Shortcuts — 🔄 шаги: сервер + плитка готовы, нужна Быстрая команда; дальше сон, тренировки
 5. Экранное время: скриншот → AI раскладывает по приложениям
 6. Фото дня: EXIF (время + GPS) → на карту и ползунок
 7. Интеграции: Spotify, GitHub

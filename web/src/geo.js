@@ -157,7 +157,7 @@ export function buildDay(rawPoints, date) {
     }
   }
 
-  const day = { route, seg, segDist, cum, stops, spans, lines: lines.filter((l) => l.length > 1), gaps, length, clock: makeClock(start) }
+  const day = { start, route, seg, segDist, cum, stops, spans, lines: lines.filter((l) => l.length > 1), gaps, length, clock: makeClock(start) }
   // у кусков движения — расстояние и способ (пешком / велик / транспорт)
   for (const sp of spans) {
     if (sp.type !== 'move') continue

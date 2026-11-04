@@ -155,6 +155,7 @@ export function LangProvider({ children }) {
       // число и единица отдельно — в плитках единица мельче
       kmParts: (m) => (m < 1000 ? [String(Math.round(m)), t('u.meter')] : [num(m / 1000, m < 10000 ? 2 : 1), t('u.km')]),
       km: (m) => f.kmParts(m).join(' '),
+      int: (x) => Math.round(x).toLocaleString(locale),
       speed: (kmh) => `${num(kmh, kmh < 10 ? 1 : 0)} ${t('u.kmh')}`,
       date: (date, opts) => new Date(`${date}T12:00:00`).toLocaleDateString(locale, opts),
     }

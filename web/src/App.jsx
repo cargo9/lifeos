@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { buildDay, stateAt, trailAt, statsAt } from './geo.js'
-import { PRIMARY_TILES, SECONDARY_TILES, buildEvents } from './metrics.js'
+import { PRIMARY_TILES, SECONDARY_TILES, buildEvents, buildSources } from './metrics.js'
 import { useLang } from './i18n.jsx'
 import { useReplay } from './useReplay.js'
 import Header from './components/Header.jsx'
@@ -21,13 +21,10 @@ const addDays = (date, n) => {
 // дата живёт в адресе (#2026-10-30) — перезагрузка страницы не сбрасывает день
 const fromHash = () => (/^#\d{4}-\d{2}-\d{2}$/.test(location.hash) ? location.hash.slice(1) : today())
 
-// будущие источники данных (шаги, еда, экран) — см. metrics.js
-const SOURCES = {}
-
 export default function App() {
   const { t, f } = useLang()
   const [date, setDate] = useState(fromHash)
-  const [data, setData] = useState({ date: null, day: null, error: null })
+  const [data, setData] = useState({ date: null, day: null, samples: null, error: null })
   const [days, setDays] = useState(null) // даты, где есть точки
   const [server, setServer] = useState('checking')
 
@@ -35,21 +32,28 @@ export default function App() {
   const day = loading ? null : data.day
   const { sec, secRef, seek, playing, toggle, stop, speed, cycleSpeed } = useReplay(day)
 
-  // загрузка дня; AbortController — чтобы при быстром переключении дат не приехал старый ответ
+  // загрузка дня: GPS + интервалы (шаги…) параллельно;
+  // AbortController — чтобы при быстром переключении дат не приехал старый ответ
   useEffect(() => {
     const ctrl = new AbortController()
-    fetch(`/api/day?date=${date}`, { signal: ctrl.signal })
-      .then((r) => {
+    const get = (url) =>
+      fetch(url, { signal: ctrl.signal }).then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         return r.json()
       })
-      .then((d) => {
+    // шаги не обязательны: если /samples недоступен, карта всё равно покажется
+    const samples = get(`/api/samples?date=${date}`).catch((e) => {
+      if (e.name === 'AbortError') throw e
+      return { samples: {} }
+    })
+    Promise.all([get(`/api/day?date=${date}`), samples])
+      .then(([d, s]) => {
         const built = buildDay(d.points, date)
-        setData({ date, day: built, error: null })
+        setData({ date, day: built, samples: s.samples, error: null })
         seek(built.route.length ? built.route[built.route.length - 1].s : built.length)
       })
       .catch((e) => {
-        if (e.name !== 'AbortError') setData({ date, day: null, error: e.message })
+        if (e.name !== 'AbortError') setData({ date, day: null, samples: null, error: e.message })
       })
     return () => ctrl.abort()
   }, [date, seek])
@@ -107,10 +111,17 @@ export default function App() {
 
   const state = day ? stateAt(day, sec) : { kind: 'empty' }
   const trail = day ? trailAt(day, sec, state) : []
-  const events = useMemo(() => (day ? buildEvents(day, SOURCES) : []), [day])
+  const sources = useMemo(() => (day ? buildSources(data.samples, day) : {}), [day, data.samples])
+  const events = useMemo(() => (day ? buildEvents(day, sources) : []), [day, sources])
   const hasPoints = day?.route.length > 0
-  const ctx = hasPoints
-    ? { day, sec, now: statsAt(day, sec), total: statsAt(day, day.route[day.route.length - 1].s), sources: SOURCES }
+  const ctx = day
+    ? {
+        day,
+        sec,
+        now: hasPoints ? statsAt(day, sec) : null,
+        total: hasPoints ? statsAt(day, day.route[day.route.length - 1].s) : null,
+        sources,
+      }
     : null
   const nearest = days?.length ? (days.findLast((d) => d < date) ?? days.find((d) => d > date)) : null
 
