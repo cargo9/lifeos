@@ -1,1 +1,24 @@
-html, body, #root { margin: 0; height: 100%; background: #0e0e0f; color: #f2f2f2; font-family: system-ui, sans-serif; }
+:root {
+  --bg: #0e0e0f;
+  --card: #1c1c1e;
+  --card-2: #141416;
+  --line: #2a2a2d;
+  --text: #f2f2f2;
+  --muted: #a0a0a0;
+  --accent: #a48bff;
+  --stop: #e8b04a;
+  --gap: #6b6b78;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+button { font: inherit; color: inherit; }
