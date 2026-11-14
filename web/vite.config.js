@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api': {
-          target: 'http://100.119.158.113:3000',
+          target: env.LIFEOS_API || 'http://localhost:3000',
           changeOrigin: true,
           rewrite: (p) => p.replace(/^\/api/, ''),
           headers: { Authorization: `Bearer ${env.LIFEOS_TOKEN}` },

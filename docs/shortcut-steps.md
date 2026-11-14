@@ -23,7 +23,7 @@
    2. **Добавить в переменную** → имя `строки`
 3. *(после конца повтора)* **Объединить текст** → `строки`, разделитель **Новая строка**
 4. **Получить содержимое URL** (Get Contents of URL)
-   - URL: `http://100.119.158.113:3000/samples`
+   - URL: `http://<tailscale-ip>:3000/samples`
    - Метод: **POST**
    - Заголовки: `Authorization` = `Bearer ТВОЙ_ТОКЕН`
    - Тело запроса: **JSON**
@@ -42,7 +42,7 @@
 ## Проверка
 
 - В Life OS открой сегодняшний день — плитка **Шаги** перестанет быть «скоро».
-- Или с ноута: `curl -H "Authorization: Bearer $TOKEN" "http://100.119.158.113:3000/samples?date=$(date +%F)"`
+- Или с ноута: `curl -H "Authorization: Bearer $TOKEN" "http://<tailscale-ip>:3000/samples?date=$(date +%F)"`
 
 ## Если не работает
 
